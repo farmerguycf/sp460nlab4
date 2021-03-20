@@ -637,7 +637,7 @@ void eval_micro_sequencer() {
     j4 = instruction[J4] << 4;
     j5 = instruction[J5] << 5;
     jreg = j0 | j1 | j2 | j3 | j4 | j5;
-    if(CYCLE_COUNT == 300){
+    if(CYCLE_COUNT == 2){
         CURRENT_LATCHES.interrupt = 1;
         NEXT_LATCHES.interrupt = 1;
     }
@@ -652,7 +652,7 @@ void eval_micro_sequencer() {
     }
     // interrupts will only be handled in state 18 exceptions will be an exception
     else if(CURRENT_LATCHES.STATE_NUMBER == 18 && CURRENT_LATCHES.interrupt){
-        NEXT_LATCHES.STATE_NUMBER == 10;
+        NEXT_LATCHES.STATE_NUMBER = 10;
         for(int i = 0; i< CONTROL_STORE_BITS; i++){
             NEXT_LATCHES.MICROINSTRUCTION[i] = CONTROL_STORE[NEXT_LATCHES.STATE_NUMBER][i];
         }
@@ -1043,21 +1043,21 @@ void latch_datapath_values() {
                 NEXT_LATCHES.Z = 1;
                 NEXT_LATCHES.P = 0;
                 NEXT_LATCHES.N = 0;
-                NEXT_LATCHES.psr = Low16bits((CURRENT_LATCHES.psr & 0x00008007) | 0x00000002);
+                NEXT_LATCHES.psr = Low16bits((CURRENT_LATCHES.psr & 0x00008000) | 0x00000002);
             }
             else if(Low16bits(BUS)&0x00008000){
                 //negative
                 NEXT_LATCHES.N = 1;
                 NEXT_LATCHES.Z = 0;
                 NEXT_LATCHES.P = 0;
-                NEXT_LATCHES.psr = Low16bits((CURRENT_LATCHES.psr & 0x00008007) | 0x00000004);
+                NEXT_LATCHES.psr = Low16bits((CURRENT_LATCHES.psr & 0x00008000) | 0x00000004);
             }
             else if(!(Low16bits(BUS) & 0x00008000)){
                 //positive
                 NEXT_LATCHES.P =1;
                 NEXT_LATCHES.N = 0;
                 NEXT_LATCHES.Z = 0;
-                NEXT_LATCHES.psr = Low16bits((CURRENT_LATCHES.psr & 0x00008007) | 0x00000001);
+                NEXT_LATCHES.psr = Low16bits((CURRENT_LATCHES.psr & 0x00008000) | 0x00000001);
             }
         }else{
             NEXT_LATCHES.N = CURRENT_LATCHES.N;
@@ -1110,9 +1110,9 @@ void latch_datapath_values() {
             NEXT_LATCHES.psr = BUS;
         }
     }
-    else{
-        NEXT_LATCHES.psr = CURRENT_LATCHES.psr;
-    }
+    // else{
+    //     NEXT_LATCHES.psr = CURRENT_LATCHES.psr;
+    // }
 
 
 
