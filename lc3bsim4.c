@@ -1,5 +1,9 @@
+/*
+    guy farmer
+    gcf375
+*/
 /***************************************************************/
-/*                                                             */
+/*                                                           */
 /*   LC-3b Simulator                                           */
 /*                                                             */
 /*   EE 460N                                                   */
@@ -96,6 +100,7 @@ enum CS_BITS {
     drmux1,
     gate_psr,
     ex_int,
+    wrd_acc,
 /* MODIFY: you have to add all your new control signals */
     CONTROL_STORE_BITS
 } CS_BITS;
@@ -194,10 +199,10 @@ int interrupt; // interrupt bit
 int psr;        // program status register
 int tempPc;     // temporary pc register
 int tempSp;     // temporary stack pointer register
-int ex_vec_rdy;
-int int_vec_rdy;
+// int ex_vec_rdy;
+// int int_vec_rdy;
 int sys_space;
-int opflag, unaligned, pcflag, protection;
+int opflag, unaligned, pcflag, protection, vecReg, trapflag;
 
 
 } System_Latches;
@@ -637,9 +642,10 @@ void eval_micro_sequencer() {
     j4 = instruction[J4] << 4;
     j5 = instruction[J5] << 5;
     jreg = j0 | j1 | j2 | j3 | j4 | j5;
-    if(CYCLE_COUNT == 2){
+    if(CYCLE_COUNT == 300){
         CURRENT_LATCHES.interrupt = 1;
         NEXT_LATCHES.interrupt = 1;
+        NEXT_LATCHES.INTV = 0x01;
     }
     if (ird)
     {
@@ -647,6 +653,12 @@ void eval_micro_sequencer() {
         for (int i = 0; i < CONTROL_STORE_BITS; i++)
         {
             NEXT_LATCHES.MICROINSTRUCTION[i] = CONTROL_STORE[NEXT_LATCHES.STATE_NUMBER][i];
+        }
+        if(NEXT_LATCHES.STATE_NUMBER == 15){
+            NEXT_LATCHES.trapflag = 1;
+        }
+        else{
+            NEXT_LATCHES.trapflag = 0;
         }
         NEXT_LATCHES.opflag = 1;
     }
@@ -771,6 +783,9 @@ void eval_bus_drivers() {
   if(sr1_mux){
       sr1_out = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x000001c0)>>6];
   }
+  else if(instruction[sr1mux1]){
+      sr1_out = CURRENT_LATCHES.REGS[6];
+  }
   else{
       sr1_out = CURRENT_LATCHES.REGS[(CURRENT_LATCHES.IR & 0x00000e00)>>9];
   }
@@ -816,7 +831,12 @@ void eval_bus_drivers() {
    // placing the adder result on wire in case ld.pc is high
   adder_res = Low16bits(addr1_mux_reg + addr2_mux_reg);
 
-  
+  if(instruction[r6mux]){
+      r6_res = CURRENT_LATCHES.REGS[6] +2;
+  }
+  else{
+      r6_res = CURRENT_LATCHES.REGS[6] -2;
+  }
 
   // putting the marmux result on bus
   if(gate_mar_mux){
@@ -886,13 +906,7 @@ void eval_bus_drivers() {
   } 
 
   else if(instruction[gatevec]){
-      if(CURRENT_LATCHES.int_vec_rdy){
-          vec_res = CURRENT_LATCHES.INTV;
-      }
-      else if(CURRENT_LATCHES.ex_vec_rdy){
-          vec_res = CURRENT_LATCHES.EXCV;
-      }
-      
+     vec_res = CURRENT_LATCHES.vecReg;
   }
 
   else if(instruction[gate_ssp]){
@@ -904,12 +918,7 @@ void eval_bus_drivers() {
   }
 
   else if(instruction[gate_r6]){
-      if(instruction[r6mux]){
-          r6_res = CURRENT_LATCHES.REGS[6] + 2;
-      }
-      else{
-          r6_res = CURRENT_LATCHES.REGS[6] - 2;
-      }
+      r6_res;
   }
 
   else if(instruction[gate_tempsp]){
@@ -1068,10 +1077,10 @@ void latch_datapath_values() {
     }
     // ld mar
     if(instruction[LD_MAR]){
-        if((BUS >= 0)&&(BUS <= 0x2fff)&&((CURRENT_LATCHES.psr & 0x00008000)==0)){
+        if((BUS >= 0)&&(BUS <= 0x2fff)&&(CURRENT_LATCHES.psr & 0x00008000)&&(CURRENT_LATCHES.trapflag == 0)){
             NEXT_LATCHES.protection = 1;
         }
-        else if((BUS & 0x00000001)&&(instruction[DATA_SIZE])){
+        else if((BUS & 0x00000001)&&(instruction[wrd_acc])){
             NEXT_LATCHES.unaligned = 1;
         }
         else{
@@ -1108,6 +1117,9 @@ void latch_datapath_values() {
         }
         else{
             NEXT_LATCHES.psr = BUS;
+            NEXT_LATCHES.N = (BUS & 0x00000004)>>2;
+            NEXT_LATCHES.Z = (BUS & 0x00000002)>>1;
+            NEXT_LATCHES.P = (BUS & 0x00000001);
         }
     }
     // else{
@@ -1128,22 +1140,26 @@ void latch_datapath_values() {
     // interrupt vector needs to be loaded
     if(instruction[ld_vec]){
         if(CURRENT_LATCHES.interrupt){
-            NEXT_LATCHES.INTV = 0x0200 | (0x01 << 1);
+            NEXT_LATCHES.INTV = 0x01;
+            NEXT_LATCHES.vecReg = 0x0200 | (0x01 << 1);
             NEXT_LATCHES.EXCV = 0;
             NEXT_LATCHES.interrupt = 0;
         }
         else if(CURRENT_LATCHES.protection){
-            NEXT_LATCHES.EXCV = 0x0200 | (0x02 << 1);
+            NEXT_LATCHES.EXCV = 0x02;
+            NEXT_LATCHES.vecReg = 0x0200 | (0x02 << 1);
             NEXT_LATCHES.INTV = 0;
             NEXT_LATCHES.protection = 0;
         }
         else if(CURRENT_LATCHES.unaligned){
-            NEXT_LATCHES.EXCV = 0x0200 | (0x03 << 1);
+            NEXT_LATCHES.EXCV = 0x03;
+            NEXT_LATCHES.vecReg = 0x0200 | (0x03 << 1);
             NEXT_LATCHES.INTV = 0;
             NEXT_LATCHES.unaligned = 0;
         }
         else if(CURRENT_LATCHES.opflag){
-            NEXT_LATCHES.EXCV = 0x0200 | (0x04 << 1);
+            NEXT_LATCHES.EXCV = 0x04;
+            NEXT_LATCHES.vecReg = 0x0200 | (0x04 << 1);
             NEXT_LATCHES.INTV = 0;
             NEXT_LATCHES.opflag = 0;
         }
@@ -1173,7 +1189,7 @@ void latch_datapath_values() {
 
     // if a protection exception or unaligned exception occurs hijack the microsequencer
     if(NEXT_LATCHES.unaligned || NEXT_LATCHES.protection){
-        NEXT_LATCHES.STATE_NUMBER == 10;
+        NEXT_LATCHES.STATE_NUMBER = 10;
         for(int i = 0; i< CONTROL_STORE_BITS; i++){
             NEXT_LATCHES.MICROINSTRUCTION[i] = CONTROL_STORE[NEXT_LATCHES.STATE_NUMBER][i];
         }
